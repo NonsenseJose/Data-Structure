@@ -1,0 +1,100 @@
+import tkinter as tk
+import tkinter.messagebox as mb
+import tkinter.filedialog as fd
+import tkinter.scrolledtext as st
+import tkinter.simpledialog as sd
+
+class Editor(tk.Frame): #文本编辑器界面类
+    """文本编辑器的GUI实现"""
+    def __init__(self):
+        tk.Frame.__init__(self)
+        self.master.title("I am an editor")
+        self.grid()
+        self.text = st.ScrolledText(self, height=20, width=60)
+        self.text.grid()    #建立一个有滚动条的text物件
+
+        top = self.winfo_toplevel() #在顶端建立菜单
+        self.menubar = tk.Menu(top)
+        top['menu'] = self.menubar
+
+        fileMenu = tk.Menu(self.menubar)
+        fileMenu.add_command(label="Open", command=lambda: self.newOpen(self.text))
+        fileMenu.add_command(label="Save", command=lambda: self.save(self.text))
+        fileMenu.add_command(label="Find", command=lambda: self.find(self.text))
+        fileMenu.add_command(label="Insert", command= lambda: self.insert(self.text))
+        fileMenu.add_command(label="Substitute", command=lambda: self.subs(self.text))
+        fileMenu.add_command(label="Quit", command=lambda: top.destroy())
+        self.menubar.add_cascade(label="File", menu=fileMenu)
+
+        helpMenu = tk.Menu(self.menubar)
+        helpMenu.add_command(label="About", command=lambda: mb.showinfo("About", self._about))
+        helpMenu.add_command(label="Addition", command=lambda: mb.showinfo("Addition", self._addition))
+        self.menubar.add_cascade(label="Help", menu=helpMenu)
+
+    _about = "利用tkinte包实现的文本编辑器。\n" \
+            "包含需求的功能：指定文件读入编辑器(File菜单下Open选项)、\n" \
+            "在编辑器中对文件进行编辑（直接在文本框内通过图形界面编辑）、\n" \
+            "将编辑的内容存入指定文件（File菜单下Save选项）、\n" \
+            "把字符串或文本块插入编辑区指定位置（File菜单下Open选项）、\n" \
+            "删除编辑区里的字符串或文本块（文本框内可以直接通过图形界面做到）、\n" \
+            "在编辑区里查找指定字符串（File菜单下Find选项）、\n" \
+            "将文本里的“字符串1”替换为“字符串2”（File菜单下Substitute选项）。"
+
+    _addition = "利用tkinter中的scrolledtext包创建了含滚动条的text界面，以便对长文本进行处理、\n"\
+                "通过一些弹出的对话框使得交互界面更人性化了一些。"
+
+    def newOpen(self, text): #这里认为Open读入文件需要抹去已在文本编辑器内的内容（经过一次询问是否保存后清空当前文本）
+        if mb.askyesno("是否保存", "Do you want to save the text?"):
+            self.save(text)
+        text.delete("0.0", "end")
+        self.insert(text)
+
+    def insert(self,text):
+        """导入的文档将插入光标所在位置，因而可以做到将文件读入编辑器
+        或者是将内容插入光标所在位置"""
+        self._fname = fd.askopenfilename()
+        file = open(self._fname,'r')
+        text.insert(tk.INSERT, file.read())
+        file.close()
+
+    def save(self, text):   #保存编辑器内当前的内容到一个txt文件
+        content = text.get("0.0", "end")
+        filename = fd.asksaveasfilename(
+            filetypes=[("Text","*.txt")],
+            title = "Save as...")
+        if filename:
+            writer = open(filename, 'w')
+            writer.write(content)
+            writer.close()
+        else:   #若文件名为空，弹出窗口提示
+            mb.showwarning("Warning", "No filename is given")
+
+    def find(self, text):
+        p = sd.askstring(title="查找", prompt="匹配串")
+        ind = "1.0"
+        while True:
+            pos = text.search(pattern=p, index=ind, stopindex="end")
+            if not pos:
+                break
+            end_pos = pos + str("+" + str(len(p)) + "c")
+            text.tag_add("search",pos, end_pos)
+            text.tag_configure("search", background="yellow")
+            ind = end_pos
+
+    def subs(self, text):
+        p = sd.askstring(title="替换", prompt="被替换串")
+        s = sd.askstring(title="替换", prompt="替换串")
+        ind = "1.0"
+        while True:
+            pos = text.search(pattern=p, index=ind, stopindex="end")
+            if not pos:
+                break
+            end_pos = pos + str("+"+str(len(p))+"c")
+            text.tag_add("search", pos, end_pos)
+            text.tag_configure("search", background="yellow")
+            text.delete(pos, end_pos)
+            text.insert(index=pos, chars=s)
+            ind = pos + str("+"+str(len(s))+"c")
+
+if __name__ == "__main__":
+    Editor().mainloop()
