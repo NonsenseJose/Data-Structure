@@ -1,0 +1,319 @@
+from random import randint
+from pythonds import Queue
+
+class Person:
+    counter = 0
+    def __init__(self,time,pos,target,weight):
+        self._time = time
+        self._pos = pos
+        self._target = target
+        self._weight = weight
+        if self._target > self._pos:
+            self._direction = 1
+        else: self._direction = -1 #记录乘客的方向属性，1表示前往上方，-1表示前往下方
+        Person.counter += 1
+    @classmethod
+    def get_counter(cls):
+        return Person.counter
+    #以下是几个得到信息的函数
+    def pos(self):
+        return self._pos
+    def target(self):
+        return self._target
+    def direction(self):
+        return self._direction
+    def wait_time(self, current_time):
+        self._intime = current_time
+        return current_time - self._time
+    def using_time(self, current_time):
+        return current_time - self._intime
+
+class Arrangement:
+    def __init__(self,host):
+        self._height = host._height
+        self._in = [Queue() for i in range(self._height)]
+        self._out = [Queue() for i in range(self._height)]
+        self._NumberOfIn = 0
+        self._NumberOfOut = 0
+        self._work_set = set()
+        self._host = host
+    def want_to_in(self, someone):
+        p = someone.pos()
+        self._in[p-1].enqueue(someone)
+        if p != self._host.pos():
+            self._work_set.add(p)
+        self._NumberOfIn += 1
+    def want_to_out(self, someone):
+        t = someone.target()
+        self._out[t - 1].enqueue(someone)
+        self._work_set.add(t)
+        self._NumberOfOut += 1
+    def in_dequeue(self, p):
+        e = self._in[p - 1].dequeue()
+        self._NumberOfIn -= 1
+        return e
+    def out_dequeue(self, p):
+        e = self._out[p - 1].dequeue()
+        self._NumberOfOut -= 1
+        return e
+    def renew(self):
+        if self._host._pos in self._work_set:
+            self._work_set.remove(self._host._pos)
+    def is_empty(self):
+        return self._NumberOfIn + self._NumberOfOut == 0
+
+class Elevator:
+    def __init__(self, n, max_load, rate, pos=1):
+        self._height = n
+        self._load = 0
+        self._max_load = max_load
+        self._rate = rate
+        self._pos = pos  # 电梯当前所处位置，默认初始值为1
+        self._currentTask = None #最近需要达到的楼层
+        self._deapestTask = None #最深需要到达的楼层
+        self._alongTask = Arrangement(self)  # 同向任务
+        self._alongWaitTask = Arrangement(self)  # 同向需等待任务
+        self._oppositeTask = Arrangement(self)  # 反向任务
+        self._direction = None  # 表示电梯当前运行状态的量，None表示静止，1表示向上，-1表示向下
+        self._state = "free"  # 电梯状态，有free,moving,waiting三种字符串值
+    def direction(self):
+        return self._direction
+    def pos(self):
+        return self._pos
+    def get_task(self):  #得到此时最优先到达的楼层,不考虑转向
+        posit = self._pos
+        while posit > 0 and posit<= self._height:
+            posit += self._direction
+            if posit in self._alongTask._work_set:
+                self._currentTask = posit
+
+    def turn_or_not(self):#默认_along空
+        if self._oppositeTask.is_empty():
+            if self._alongWaitTask.is_empty():
+                self._direction = None
+                self._currentTask = None
+                self._state = "free"
+            else:
+                return True
+        else:#非空
+            t = self._oppositeTask._work_set
+            if self._direction > 0 and max(t) >self._pos:
+                self._currentTask = max(t)
+                return False
+            elif self._direction < 0 and min(t)< self._pos:
+                self._currentTask = min(t)
+                return False
+            else:
+                return True
+        return False
+
+    def turn(self):#转向,默认along空
+        if self._oppositeTask.is_empty():  #原本的反向空
+            if self._alongWaitTask.is_empty():  # 若全空，停下
+                self._direction = None
+                self._currentTask = None
+                self._state = "free"
+            else:
+                if self._direction > 0:#原本向上
+                    self._direction *= (-1)
+                    self._currentTask = min(self._alongWaitTask._work_set)
+                elif self._direction < 0: #认为此时direction不为None
+                    self._direction *= (-1)
+                    self._currentTask = max(self._alongWaitTask._work_set)
+                self._state = "moving"
+                self._alongTask = self._oppositeTask
+                self._oppositeTask = self._alongWaitTask
+                self._alongWaitTask = Arrangement(self)
+        else:
+            if self.turn_or_not():
+                self._direction *= (-1)
+                if self._direction > 0:
+                    self._currentTask = min(self._oppositeTask._work_set)
+                else: self._currentTask = max(self._oppositeTask._work_set)
+                self._state = "moving"
+                self._alongTask = self._oppositeTask
+                self._oppositeTask = self._alongWaitTask
+                self._alongWaitTask = Arrangement(self)
+
+
+verbose = True
+
+def demo(happen,load,rate,door,in_out,height=5,times=1,numSeconds=1800,p=1,verbose=True):
+    """happen应当是一个由正整数构成的二元元组，代表乘客到达的时间间隔区间，
+    rate是电梯运行一层需要的时间
+    door为开关门时间
+    in_out为人进出时间
+    load代表电梯的限重，单位为千克
+    height为楼层高度，默认为5（模拟理科一号楼）
+    times代表运行整个模拟系统的次数
+    numSeconds代表运行的总时长，单位为秒
+    p代表要求电梯处于的初始位置"""
+    def tick():
+        nonlocal time_person_remained, time_moving_remained, time_waiting_remained
+        nonlocal time_changefloor, time_close_remained, time_open_remained
+        time_person_remained -= 1
+        if time_moving_remained:
+            time_moving_remained -= 1
+        if time_changefloor:
+            time_changefloor -= 1
+        if time_waiting_remained:
+            time_waiting_remained -= 1
+        if time_open_remained:
+            time_open_remained -= 1
+        if time_close_remained:
+            time_close_remained -= 1
+
+    for i in range(times):  #多次进行模拟
+        print("以下是第{}次模拟的结果".format(str(i+1)))
+        elevator = Elevator(height,load,p)
+        if verbose:
+            print("新建一个模拟电梯，其载重为{}千克，楼层共{}层，一层楼需要运行{}秒".format(str(load), str(height),str(rate)))
+
+        waiting_times = [] #乘客等待时间的表
+        using_times = [] #乘客在电梯中度过的时间的表
+        finished_person = 0 #模拟结束时运送的总人次
+        average_number = 0 #平均载人数
+        average_load = 0 #平均载重
+        free_time = 0 #电梯空闲时间
+
+        time_person_remained = randint(*happen)
+        time_waiting_remained = None   #剩余等候时间
+        time_changefloor = None #剩余变楼时间
+        time_open_remained = None #剩余开门时间
+        time_close_remained = None #剩余关门
+        time_moving_remained = None  #剩余时间
+
+        currentSecond = 0
+        while currentSecond < numSeconds: #模拟计时
+            currentSecond += 1
+            tick()
+            if verbose:
+                print("当前时间{:<4}，电梯处于{:<2}楼，状态是{:<8}，方向是{}".
+                      format(str(currentSecond), str(elevator._pos), elevator._state,str(elevator._direction)))
+            #到达新楼层,改变状态
+            if time_changefloor == 0:
+                elevator._pos += elevator.direction()
+                if time_moving_remained:
+                    time_changefloor = rate
+                else: time_changefloor = None
+                elevator._alongTask.renew()
+            #新乘客到达
+            if time_person_remained == 0:
+                position = randint(1,height) #做一些处理，让目标楼层和初始楼层一定不等
+                possible_target = [i for i in range(1,height+1)]
+                possible_target.remove(position)
+                t = randint(0,height-2)
+                target = possible_target[t]
+                new_task = Person(currentSecond,position,target,randint(45,100))
+                if verbose:
+                    print("第{}秒新出现了第{}名乘客，到达楼层为{}，目标楼层为{}，电梯位置在{}楼".format(
+                        str(currentSecond),str(Person.get_counter()),str(position),str(target),str(elevator.pos())))
+                #不同状态下
+                if elevator._state == "free":
+                    if elevator._pos == new_task._pos: #同楼
+                        elevator._state = "waiting"
+                        elevator._direction = new_task._direction
+                        time_open_remained = door
+                        time_waiting_remained = 0
+                    else:#异楼
+                        d = new_task.pos() - elevator.pos()
+                        elevator._direction = int(d/abs(d))
+                        elevator._state = "moving"
+                        elevator._currentTask = new_task.pos()
+                        time_moving_remained = abs(d) * rate
+                        time_changefloor = rate
+                    #考虑如何入列
+                    if elevator._direction == new_task._direction:
+                        elevator._alongTask.want_to_in(new_task)
+                    else: #反向，只可能是异楼
+                        elevator._oppositeTask.want_to_in(new_task)
+                        elevator._currentTask = new_task.pos()
+
+                elif elevator.direction() == new_task.direction():#若同向
+                    if (new_task.pos()-elevator.pos())* elevator._direction > 0: #若顺路
+                        elevator._alongTask.want_to_in(new_task)
+                    elif new_task.pos() == elevator.pos() and elevator._state == "waiting" \
+                            and time_close_remained is None: #如果同一层且门未关
+                        elevator._alongTask.want_to_in(new_task)
+                    else:
+                        elevator._alongWaitTask.want_to_in(new_task)
+                    elevator.get_task()#更新_currentTask的状态
+                    if new_task.pos() == elevator._currentTask:
+                        time_moving_remained = time_moving_remained%rate +abs(new_task.pos()-elevator.pos())*rate
+                else: #若反向
+                    elevator._oppositeTask.want_to_in(new_task) #不影响currentTask
+                time_person_remained = randint(*happen)#下一个到达的时间间隔
+
+            #运行至某楼停下或处于等待状态
+            if time_moving_remained == 0 or elevator._state == "waiting":
+                if elevator._state == "moving":#刚到
+                    elevator._state = "waiting"
+                    time_moving_remained = None
+                    time_open_remained = door #开门
+                    continue
+                if time_close_remained == 0: #关门完毕，出
+                    time_open_remained = time_close_remained = time_waiting_remained = None #维护时间的状态
+                    continue
+
+                level = elevator._pos
+                if time_open_remained or time_waiting_remained or time_close_remained: #若处于状态，直接进入下一秒
+                    continue
+
+                if (level-1)>= 0 and (level-1)< elevator._height and (not elevator._alongTask._out[level-1].isEmpty()): #有欲出者
+                    person_out = elevator._alongTask.out_dequeue(level)
+                    elevator._load -= person_out._weight
+                    using_times.append(person_out.using_time(currentSecond))
+                    finished_person += 1
+                    if verbose:
+                        print("成功运输一人次，其在电梯内时间为：", str(person_out.using_time(currentSecond)))
+                    average_load += person_out.using_time(currentSecond) * person_out._weight
+                    average_number += person_out.using_time(currentSecond)
+                    time_waiting_remained = in_out  # 需等他出门
+                    continue  # 下一秒
+
+                if (level-1)>= 0 and (level-1)<elevator._height and (not elevator._alongTask._in[level-1].isEmpty()):#有欲入者,暂时省略开关门与进出
+                    person_in = elevator._alongTask.in_dequeue(level)
+                    new_load = elevator._load + person_in._weight
+                    if new_load <= elevator._max_load:
+                        elevator._alongTask.want_to_out(person_in)
+                        time_waiting_remained = in_out
+                        if verbose:
+                            print("于{}秒成功搭载一人次，其等候时间为：{}".format(str(currentSecond),str(person_in.wait_time(currentSecond))))
+                        continue
+                    else:#超重时，所有人必须等下一趟
+                        elevator._alongTask.want_to_in(person_in)
+                        while not elevator._alongTask._in[level - 1].isEmpty():
+                            person_next = elevator._alongTask.in_dequeue(level)
+                            elevator._alongWaitTask.want_to_in(person_next)
+                #进出结束，决定接下来
+                if not elevator._alongTask.is_empty():  # 若该方向非空，取最近的走
+                    elevator.get_task()
+                    print(elevator._currentTask)
+                    time_moving_remained = abs(elevator._currentTask - elevator._pos) * rate
+                    time_changefloor = rate
+                    elevator._state = "moving"
+                else:  # 空
+                    elevator.turn()
+                    if elevator._state != "free":
+                        time_moving_remained = abs(elevator._currentTask - elevator._pos) * rate
+                        time_changefloor = rate
+                    continue
+                time_close_remained = door# 无欲入也无欲出者，开始关门
+
+            if elevator._state == "free":
+                free_time += 1
+            else:
+                if elevator._pos + elevator._direction> elevator._height or elevator._pos + elevator._direction <= 0:
+                    elevator._direction *= (-1)
+                    elevator._alongTask = elevator._oppositeTask
+                    elevator._oppositeTask = elevator._alongWaitTask
+                    elevator._alongWaitTask = Arrangement(elevator)
+
+
+        work_time = numSeconds - free_time
+        print("模拟过程中的总工作时间为：",str(work_time))
+        print('模拟过程中的平均负重为：', str(average_load/work_time))
+        print('模拟过程中的平均载人数为：',str(average_number/work_time))
+        print()
+
+demo((8,9), 2000, 3, 1, 1, height=5, times=1,numSeconds=70)
